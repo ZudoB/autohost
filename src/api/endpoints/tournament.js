@@ -8,15 +8,19 @@ const auth = require("../auth");
 module.exports = function (sessionmanager) {
     const app = Router();
 
-    app.get("/", (req, res) => {
-        res.json({"woomy": true});
+    app.get("/", async (req, res) => {
+        const tournaments = await challonge.getAllTournaments();
+
+        res.json({tournaments});
     });
 
     app.post("/",
         auth,
         json(),
         body("shortname").isLength({min: 3, max: 16}),
+        body("description").isString(),
         body("name").isLength({min: 3, max: 60}),
+        body("url").matches(/[a-zA-Z0-9_]{3,16}/),
         body("type").isIn(Object.keys(TOURNAMENT_TYPES)),
         body("ft").isInt({min: 1, max: 99}),
         body("wb").isInt({min: 1, max: 99}),
@@ -27,7 +31,7 @@ module.exports = function (sessionmanager) {
             }
 
             try {
-                const tournament = await challonge.createTournament(req.tetrioID, req.body.name, req.body.shortname, TOURNAMENT_TYPES[req.body.type], req.body.ft, req.body.wb);
+                const tournament = await challonge.createTournament(req.tetrioID, req.body.name, req.body.url, req.body.shortname, req.body.description, TOURNAMENT_TYPES[req.body.type], req.body.ft, req.body.wb);
                 res.json(tournament);
             } catch (e) {
                 res.status(500).json({error: e.message});
@@ -35,14 +39,27 @@ module.exports = function (sessionmanager) {
         });
 
     app.post("/:tournament/participant", auth, async (req, res) => {
-        // todo: seed!
         const user = await getUser(req.tetrioID);
 
+        const seed = await challonge.seedPlayer(req.params.tournament, user.league?.rating || -1);
+
+        console.log(`Seeded ${user.username} (TR ${user.league?.rating}) to position ${seed}`);
+
         try {
-            const participant = await challonge.createParticipant(req.params.tournament, user.username, user._id, user.league?.rating || 0, 1);
-            res.json(participant);
+            const participant = await challonge.createParticipant(req.params.tournament, user.username, user._id, user.league?.rating || -1, seed);
+            res.json({participant});
         } catch (e) {
             res.status(500).json({error: e.message});
+        }
+    });
+
+    app.get("/:tournament/participant/:participant", auth, async (req, res) => {
+        const participant = await challonge.getParticipantByTetrioID(req.params.tournament, req.params.participant);
+
+        if (participant) {
+            res.json({participant});
+        } else {
+            res.status(404).json({error: "participant not found"});
         }
     });
 

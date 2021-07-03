@@ -1,4 +1,4 @@
-const {isDeveloper} = require("../data/developers");
+const {isDeveloper} = require("../data/people");
 
 function disabled() {
     return Promise.resolve();

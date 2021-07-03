@@ -3,7 +3,7 @@ const fetch = require("node-fetch");
 function parseDescriptionMeta(description) {
     const startPos = description.indexOf("{");
     const endPos = description.lastIndexOf("}");
-    const json = description.substring(startPos, endPos+1);
+    const json = description.substring(startPos, endPos + 1);
     return JSON.parse(json);
 }
 
@@ -14,14 +14,20 @@ function challongeResponseToTournament(t) {
         id: t.id,
         url: t.url,
         name: t.name,
+        state: t.state,
         shortname: meta.shortname,
+        summary: meta.summary,
         description: meta.description,
         ft: meta.ft,
-        wb: meta.wb
+        wb: meta.wb,
+        rank_limit: meta.rank_limit,
+        host: meta.host
     };
 }
 
 function challongeResponseToParticipant(p) {
+    if (!p.misc) return;
+
     const misc = JSON.parse(p.misc);
 
     return {
@@ -33,20 +39,34 @@ function challongeResponseToParticipant(p) {
     };
 }
 
+async function getTournament(id) {
+    const response = await fetch(`https://api.challonge.com/v1/tournaments.json?api_key=${process.env.CHALLONGE_KEY}`);
+
+    const tournament = (await response.json()).find(t => t.tournament.id === id || t.tournament.url === id)?.tournament;
+
+    if (tournament) {
+        return challongeResponseToTournament(tournament);
+    } else {
+        return undefined;
+    }
+}
+
 async function getAllTournaments() {
     const response = await fetch(`https://api.challonge.com/v1/tournaments.json?api_key=${process.env.CHALLONGE_KEY}`);
 
     return (await response.json()).map(t => challongeResponseToTournament(t.tournament));
 }
 
-async function createTournament(host, name, url, shortname, description, type, ft, wb) {
+async function createTournament({host, name, url, shortname, summary, description, type, ft, wb, rank_limit}) {
     const params = new URLSearchParams();
 
-    const descriptionMeta = JSON.stringify({host, name, shortname, description, ft, wb});
+    const descriptionMeta = JSON.stringify({host, name, shortname, summary, description, ft, wb, rank_limit});
 
     params.set("api_key", process.env.CHALLONGE_KEY);
     params.set("tournament[name]", name);
-    params.set("tournament[url]", url);
+    if (url) {
+        params.set("tournament[url]", url);
+    }
     params.set("tournament[description]", "DO NOT MODIFY THIS DESCRIPTION DIRECTLY! " + descriptionMeta);
     params.set("tournament[tournament_type]", type);
     params.set("tournament[open_signup]", "false");
@@ -101,13 +121,16 @@ async function getMatch(tournament, match) {
     return (await response.json()).match;
 }
 
-
 async function getAllParticipants(tournament) {
     const response = await fetch(`https://api.challonge.com/v1/tournaments/${tournament}/participants.json?api_key=${process.env.CHALLONGE_KEY}`);
 
     const participants = await response.json();
 
-    return participants.map(participant => challongeResponseToParticipant(participant.participant));
+    if (participants?.errors) {
+        return [];
+    }
+
+    return participants.map(participant => challongeResponseToParticipant(participant.participant)).filter(participant => !!participant);
 }
 
 async function getParticipantByTetrioID(tournament, uid) {
@@ -163,6 +186,7 @@ async function markUnderway(tournament, match) {
 
 module.exports = {
     getAllTournaments,
+    getTournament,
     createTournament,
     createParticipant,
     getMatchesForParticipant,

@@ -40,6 +40,9 @@ const COMMANDS = {
     },
     sip(sessionmanager, user) {
         sessionmanager.ribbon.sendDM(user, ":serikasip:");
+    },
+    login(sessionmanager, user, args) {
+
     }
 };
 
@@ -47,6 +50,7 @@ class SessionManager {
 
     constructor() {
         this.sessions = new Map();
+        this.loginSessions = new Map();
 
         this.connect();
     }
@@ -318,6 +322,59 @@ class SessionManager {
         this.sessions.forEach(session => {
             session.ribbon.disconnectGracefully();
         });
+    }
+
+    createLoginSession(user) {
+        return new Promise(resolve => {
+            const ribbon = new Ribbon(process.env.TOKEN);
+
+            const key = crypto.randomBytes(64).toString("hex");
+
+            ribbon.on("gmupdate.join", join => {
+                console.log(join, user);
+                if (join._id === user) {
+                    ribbon.sendChatMessage(`Hi ${join.username.toUpperCase()} - type LOGIN in chat to continue logging in to Autohost Tournaments. If you aren't trying to log in, simply leave the room.`);
+                } else {
+                    ribbon.room.kickPlayer(join._id);
+                }
+            });
+
+            ribbon.on("chat", chat => {
+                if (chat.user._id === user && chat.content.toLowerCase().trim() === "login") {
+                    ribbon.sendChatMessage(":verified: Login complete! You can now leave this room.");
+                    this.loginSessions.set(key, {validated: true, user});
+                    ribbon.disconnectGracefully();
+                }
+            })
+
+            ribbon.once("joinroom", room => {
+                ribbon.room.setName("LOG IN TO AUTOHOST");
+                this.loginSessions.set(key, {validated: false, user});
+                resolve({room, key});
+            });
+
+            ribbon.once("ready", () => {
+                ribbon.createRoom(true);
+            });
+
+            setTimeout(() => {
+                ribbon.disconnectGracefully();
+                this.endLoginSession(key);
+            }, 300000);
+        });
+    }
+
+    validateLoginSession(user, key) {
+        if (this.loginSessions.has(key)) {
+            const session = this.loginSessions.get(key);
+            return session.validated && session.user === user;
+        } else {
+            return false;
+        }
+    }
+
+    endLoginSession(key) {
+        this.loginSessions.delete(key);
     }
 }
 

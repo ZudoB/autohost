@@ -17,13 +17,16 @@ module.exports = function (sessionmanager) {
     app.post("/",
         auth,
         json(),
-        body("shortname").isLength({min: 3, max: 16}),
-        body("description").isString(),
         body("name").isLength({min: 3, max: 60}),
-        body("url").matches(/[a-zA-Z0-9_]{3,16}/),
+        body("summary").isLength({min: 3, max: 200}),
+        body("description").isString(),
+        body("shortname").isLength({min: 3, max: 16}),
+        body("name").isLength({min: 3, max: 60}),
+        body("url").optional({checkFalsy: true}).matches(/[a-zA-Z0-9_]{3,16}/),
         body("type").isIn(Object.keys(TOURNAMENT_TYPES)),
         body("ft").isInt({min: 1, max: 99}),
         body("wb").isInt({min: 1, max: 99}),
+        body("rank_limit").isArray({min: 2, max: 2}), // todo: validate ranks
         async (req, res) => {
             const errors = validationResult(req);
             if (!errors.isEmpty()) {
@@ -31,12 +34,32 @@ module.exports = function (sessionmanager) {
             }
 
             try {
-                const tournament = await challonge.createTournament(req.tetrioID, req.body.name, req.body.url, req.body.shortname, req.body.description, TOURNAMENT_TYPES[req.body.type], req.body.ft, req.body.wb);
+                const tournament = await challonge.createTournament({
+                    host: req.tetrioID,
+                    name: req.body.name,
+                    url: req.body.url && req.body.url.length > 1 ? req.body.url : undefined,
+                    shortname: req.body.shortname,
+                    summary: req.body.summary,
+                    description: req.body.description,
+                    type: TOURNAMENT_TYPES[req.body.type],
+                    ft: req.body.ft,
+                    wb: req.body.wb,
+                    rank_limit: req.body.rank_limit
+                });
                 res.json(tournament);
             } catch (e) {
                 res.status(500).json({error: e.message});
             }
         });
+
+    app.get("/:tournament", async (req, res) => {
+        const tournament = await challonge.getTournament(req.params.tournament);
+        if (tournament) {
+            res.json({tournament});
+        } else {
+            res.status(404).json({error: "Tournament not found."});
+        }
+    });
 
     app.post("/:tournament/participant", auth, async (req, res) => {
         const user = await getUser(req.tetrioID);
@@ -53,7 +76,17 @@ module.exports = function (sessionmanager) {
         }
     });
 
-    app.get("/:tournament/participant/:participant", auth, async (req, res) => {
+    app.get("/:tournament/participant", async (req, res) => {
+        const participants = await challonge.getAllParticipants(req.params.tournament);
+
+        if (participants) {
+            res.json({participants});
+        } else {
+            res.status(404).json({error: "tournament not found"});
+        }
+    });
+
+    app.get("/:tournament/participant/:participant", async (req, res) => {
         const participant = await challonge.getParticipantByTetrioID(req.params.tournament, req.params.participant);
 
         if (participant) {
@@ -62,10 +95,6 @@ module.exports = function (sessionmanager) {
             res.status(404).json({error: "participant not found"});
         }
     });
-
-    // app.get("/:tournament/match", auth, async (req, res) => {
-    //
-    // });
 
     app.post("/:tournament/match/:match/lobby", auth, async (req, res) => {
         const match = await challonge.getMatch(req.params.tournament, req.params.match);

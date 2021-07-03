@@ -1,5 +1,5 @@
 const {getBan} = require("../data/globalbans");
-const RANK_HIERARCHY = ["d", "d+", "c-", "c", "c+", "b-", "b", "b+", "a-", "a", "a+", "s-", "s", "s+", "ss", "u", "x"];
+const {RANK_HIERARCHY} = require("../data/data");
 
 function xpToLevel(xp) {
     return Math.pow(xp / 500, 0.6) + (xp / (5000 + Math.max(0, xp - 4000000) / 5000)) + 1;

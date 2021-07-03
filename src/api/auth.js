@@ -1,10 +1,25 @@
+const jwt = require("jsonwebtoken");
+
 module.exports = function (req, res, next) {
-    const id = req.get("dev-tetrio-id"); // todo: this is not security! remove it for prod!
-    if (id) {
-        req.tetrioID = id;
-    } else {
-        req.tetrioID = "5e4979d4fad3ca55f6512458"; // zudo
+    const header = req.get("authorization");
+
+    if (!header) {
+        return res.status(401).json({error: "authorization required"});
     }
+
+    const parts = header.split(" ");
+
+    if (parts.length !== 2 || parts[0] !== "Bearer") {
+        return res.status(401).json({error: "bearer token required"});
+    }
+
+    const token = parts[1];
+
+    jwt.verify(token, process.env.JWT_KEY, (err, claim) => {
+        if (err) return res.status(401).json({error: "token invalid"});
+
+        req.tetrioID = claim.sub;
+    });
 
     next();
 }

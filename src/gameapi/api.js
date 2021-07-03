@@ -38,6 +38,8 @@ async function postAuthed(url, body) {
 }
 
 async function getUser(id) {
+    if (!id || id.length === 0) return undefined;
+
     const result = await get("users/" + id);
 
     if (result.success) {
